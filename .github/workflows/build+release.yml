@@ -1,0 +1,123 @@
+name: Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      create-binaries:
+        type: boolean
+        description: create libwebp and binaries?
+      libwebp-version:
+        description: libwebp tag to use
+        default: v1.2.4
+      create-release:
+        type: boolean
+        description: create release?
+      version:
+        required: true
+        description: Version number (use existing tag, e.g. 1.5)
+
+env:
+  AppName: WebP-wrapper
+
+jobs:
+
+  build:
+
+    runs-on: windows-latest
+
+    env:
+      SolutionPath: WebPTest.sln
+      ProjectPath: WebPTest
+      OutputPath: WebPTest/bin/Release
+      VersionNumber: ${{ github.event.inputs.version }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Setup MSBuild.exe
+      uses: microsoft/setup-msbuild@v1.1
+
+    - name: Clone libwebp
+      if: github.event.inputs.create-binaries == 'true'
+      env:
+        branch_tag: ${{ github.event.inputs.libwebp-version }}
+      run: |
+        git clone --depth 1 --branch ${{ env.branch_tag }} https://chromium.googlesource.com/webm/libwebp
+
+    - uses: ilammy/msvc-dev-cmd@v1
+      if: github.event.inputs.create-binaries == 'true'
+      with:
+        arch: x86
+    - name: Build libwebp x86
+      if: github.event.inputs.create-binaries == 'true'
+      run: |
+        cd libwebp
+        nmake /f Makefile.vc CFG=release-dynamic RTLIBCFG=static OBJDIR=output
+
+    - uses: ilammy/msvc-dev-cmd@v1
+      if: github.event.inputs.create-binaries == 'true'
+      with:
+        arch: x64
+    - name: Build libwebp x64
+      if: github.event.inputs.create-binaries == 'true'
+      run: |
+        cd libwebp
+        nmake /f Makefile.vc CFG=release-dynamic RTLIBCFG=static OBJDIR=output
+
+    - name: Copy Dlls
+      if: github.event.inputs.create-binaries == 'true'
+      run: |
+         Copy-Item "libwebp\output\release-dynamic\x86\bin\*.dll" "${{ env.ProjectPath }}\x86"
+         Copy-Item "libwebp\output\release-dynamic\x86\bin\libwebp.dll" "${{ env.ProjectPath }}\libwebp_x86.dll"
+         Copy-Item "libwebp\output\release-dynamic\x64\bin\*.dll" "${{ env.ProjectPath }}\x64"
+         Copy-Item "libwebp\output\release-dynamic\x64\bin\libwebp.dll" "${{ env.ProjectPath }}\libwebp_x64.dll"
+
+    - name: Build
+      run: msbuild ${{ env.SolutionPath }} /p:Configuration=Release /p:Platform="Any CPU"
+
+    - name: GIT commit and push changed files
+      if: github.event.inputs.create-binaries == 'true'
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git commit -a -m "Build action"
+        git push
+
+    - name: Add files
+      if: github.event.inputs.create-release == 'true'
+      run: |
+         Copy-Item "Compile dll.txt" "${{ env.OutputPath }}"
+         Copy-Item "LICENSE" "${{ env.OutputPath }}"
+         Copy-Item "${{ env.ProjectPath }}\WebPWrapper.cs" "${{ env.OutputPath }}"
+
+    - name: Create Draft Release
+      id: create_release
+      if: github.event.inputs.create-release == 'true'
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ env.VersionNumber }}
+        release_name: ${{ env.AppName }}-${{ env.VersionNumber }}
+        draft: true
+        prerelease: false
+
+    - name: Zip files
+      if: github.event.inputs.create-release == 'true'
+      uses: thedoctor0/zip-release@master
+      with:
+        type: 'zip'
+        filename: '${{ env.AppName }}-${{ env.VersionNumber }}.zip'
+        directory: ${{ env.OutputPath }}
+
+    - name: Upload release assets
+      if: github.event.inputs.create-release == 'true'
+      uses: actions/upload-release-asset@v1.0.1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: .\${{ env.OutputPath }}\${{ env.AppName }}-${{ env.VersionNumber }}.zip
+        asset_name: ${{ env.AppName }}-${{ env.VersionNumber }}.zip
+        asset_content_type: application/zip
