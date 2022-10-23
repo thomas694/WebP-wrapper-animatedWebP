@@ -1,3 +1,16 @@
+## Note
+
+This repository contains the original code from the source repo plus wrapper code to handle animated WebP files.<br>
+These changes are intended to be integrated back into the upstream repo, waiting for the decision whether and how they should be integrated.
+
+&nbsp;
+&nbsp;
+
+[original]
+
+---
+
+
 # WebP-wrapper
 Wrapper for libwebp in C#. The most complete wrapper in pure managed C#.
 

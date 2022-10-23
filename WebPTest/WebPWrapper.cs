@@ -1,5 +1,5 @@
 ﻿/////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/// Wrapper for WebP format in C#. (MIT) Jose M. Piñeiro
+/// Wrapper for WebP format in C#. (MIT) Jose M. Piñeiro and others
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////// 
 /// Decode Functions:
 /// Bitmap Load(string pathFileName) - Load a WebP file in bitmap.
@@ -22,12 +22,16 @@
 /// float[] PictureDistortion(Bitmap source, Bitmap reference, int metric_type) - Get PSNR, SSIM or LSIM distortion metric between two pictures
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security;
 using System.Windows.Forms;
+using System.Windows;
 
 namespace WebPWrapper
 {
@@ -74,9 +78,9 @@ namespace WebPWrapper
                 int outputSize = bmpData.Stride * imgHeight;
                 IntPtr ptrData = pinnedWebP.AddrOfPinnedObject();
                 if (bmp.PixelFormat == PixelFormat.Format24bppRgb)
-                     UnsafeNativeMethods.WebPDecodeBGRInto(ptrData, rawWebP.Length, bmpData.Scan0, outputSize, bmpData.Stride);
+                    UnsafeNativeMethods.WebPDecodeBGRInto(ptrData, rawWebP.Length, bmpData.Scan0, outputSize, bmpData.Stride);
                 else
-                     UnsafeNativeMethods.WebPDecodeBGRAInto(ptrData, rawWebP.Length, bmpData.Scan0, outputSize, bmpData.Stride);
+                    UnsafeNativeMethods.WebPDecodeBGRAInto(ptrData, rawWebP.Length, bmpData.Scan0, outputSize, bmpData.Stride);
 
                 return bmp;
             }
@@ -369,7 +373,7 @@ namespace WebPWrapper
             try
             {
                 int size;
-                
+
                 //Get bmp data
                 bmpData = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.ReadOnly, bmp.PixelFormat);
 
@@ -549,6 +553,97 @@ namespace WebPWrapper
 
             return AdvancedEncode(bmp, config, false);
         }
+        #endregion
+
+        #region | Public AnimDecoder Functions |
+
+        /// <summary>
+        /// Holds information about one frame.
+        /// </summary>
+        /// <remarks>
+        /// AnimLoad() / AnimDecode() return a list of FrameData objects.
+        /// </remarks>
+        public class FrameData
+        {
+            public Bitmap Bitmap { get; set; }
+
+            public int Duration { get; set; }
+        }
+
+        /// <summary>Read and Decode an Animated WebP file</summary>
+        /// <param name="pathFileName">Animated WebP file to load</param>
+        /// <returns>Bitmaps of the Animated WebP frames</returns>
+        public IEnumerable<FrameData> AnimLoad(string pathFileName)
+        {
+            try
+            {
+                byte[] rawWebP = File.ReadAllBytes(pathFileName);
+
+                return AnimDecode(rawWebP);
+            }
+            catch (Exception) { throw; }
+        }
+
+        /// <summary>Decode an Animated WebP image</summary>
+        /// <param name="rawWebP">The data to uncompress</param>
+        /// <returns>List of FrameData - each containing frame bitmap and duration</returns>
+        public IEnumerable<FrameData> AnimDecode(byte[] rawWebP)
+        {
+            GCHandle pinnedWebP = GCHandle.Alloc(rawWebP, GCHandleType.Pinned);
+
+            Bitmap bitmap = null;
+            BitmapData bmpData = null;
+            try
+            {
+                WebPAnimDecoderOptions dec_options = new WebPAnimDecoderOptions();
+                var result = UnsafeNativeMethods.WebPAnimDecoderOptionsInit(ref dec_options);
+                dec_options.color_mode = WEBP_CSP_MODE.MODE_BGRA;
+                WebPData webp_data = new WebPData
+                {
+                    data = pinnedWebP.AddrOfPinnedObject(),
+                    size = new UIntPtr((uint)rawWebP.Length)
+                };
+                WebPAnimDecoder dec = UnsafeNativeMethods.WebPAnimDecoderNew(ref webp_data, ref dec_options);
+                WebPAnimInfo anim_info = new WebPAnimInfo();
+                UnsafeNativeMethods.WebPAnimDecoderGetInfo(dec.decoder, out anim_info);
+
+                Rectangle rect = new Rectangle(0, 0, (int)anim_info.canvas_width, (int)anim_info.canvas_height);
+
+                List<FrameData> frames = new List<FrameData>();
+                int oldTimestamp = 0;
+                while (UnsafeNativeMethods.WebPAnimDecoderHasMoreFrames(dec.decoder))
+                {
+                    IntPtr buf = IntPtr.Zero;
+                    int timestamp = 0;
+                    var result2 = UnsafeNativeMethods.WebPAnimDecoderGetNext(dec.decoder, ref buf, ref timestamp);
+
+                    bitmap = new Bitmap((int)anim_info.canvas_width, (int)anim_info.canvas_height, PixelFormat.Format32bppArgb);
+                    bmpData = bitmap.LockBits(rect, ImageLockMode.ReadWrite, bitmap.PixelFormat);
+                    IntPtr startAddress = bmpData.Scan0;
+                    int pixels = Math.Abs(bmpData.Stride) * bitmap.Height;
+                    UnsafeNativeMethods.CopyMemory(startAddress, buf, (uint)pixels);
+                    bitmap.UnlockBits(bmpData);
+                    bmpData = null;
+
+                    frames.Add(new FrameData() { Bitmap = bitmap, Duration = timestamp - oldTimestamp });
+                    oldTimestamp = timestamp;
+                }
+
+                UnsafeNativeMethods.WebPAnimDecoderDelete(dec.decoder);
+
+                return frames;
+            }
+            catch (Exception) { throw; }
+            finally
+            {
+                if (bmpData != null)
+                    bitmap.UnlockBits(bmpData);
+
+                if (pinnedWebP.IsAllocated)
+                    pinnedWebP.Free();
+            }
+        }
+
         #endregion
 
         #region | Another Public Functions |
@@ -891,13 +986,30 @@ namespace WebPWrapper
         #endregion
     }
 
+    #region | Windows functions |
+    [SuppressUnmanagedCodeSecurityAttribute]
+    internal sealed partial class UnsafeNativeMethods
+    {
+        [DllImport("kernel32.dll", EntryPoint = "CopyMemory", SetLastError = false)]
+        internal static extern void CopyMemory(IntPtr dest, IntPtr src, uint count);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = false)]
+        private static extern IntPtr LoadLibrary(string lpFileName);
+
+        static UnsafeNativeMethods()
+        {
+            string path = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), IntPtr.Size == 4 ? "x86" : "x64");
+            LoadLibrary(Path.Combine(path, "libwebp.dll"));
+            LoadLibrary(Path.Combine(path, "libwebpdecoder.dll"));
+            LoadLibrary(Path.Combine(path, "libwebpdemux.dll"));
+        }
+    }
+    #endregion
+
     #region | Import libwebp functions |
     [SuppressUnmanagedCodeSecurityAttribute]
     internal sealed partial class UnsafeNativeMethods
     {
-
-        [DllImport("kernel32.dll", EntryPoint = "CopyMemory", SetLastError = false)]
-        internal static extern void CopyMemory(IntPtr dest, IntPtr src, uint count);
 
         private static readonly int WEBP_DECODER_ABI_VERSION = 0x0208;
 
@@ -1187,7 +1299,7 @@ namespace WebPWrapper
             {
                 case 4:
                     if (WebPDecodeBGRAInto_x86(data, (UIntPtr)data_size, output_buffer, output_buffer_size, output_stride) == null)
-                        throw new InvalidOperationException("Can not decode WebP"); 
+                        throw new InvalidOperationException("Can not decode WebP");
                     break;
                 case 8:
                     if (WebPDecodeBGRAInto_x64(data, (UIntPtr)data_size, output_buffer, output_buffer_size, output_stride) == null)
@@ -1452,6 +1564,246 @@ namespace WebPWrapper
         private static extern int WebPPictureDistortion_x86(ref WebPPicture srcPicture, ref WebPPicture refPicture, int metric_type, IntPtr pResult);
         [DllImport("libwebp_x64.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "WebPPictureDistortion")]
         private static extern int WebPPictureDistortion_x64(ref WebPPicture srcPicture, ref WebPPicture refPicture, int metric_type, IntPtr pResult);
+
+        internal static IntPtr WebPMalloc(int size)
+        {
+            switch (IntPtr.Size)
+            {
+                case 4:
+                    return WebPMalloc_x86(size);
+                case 8:
+                    return WebPMalloc_x64(size);
+                default:
+                    throw new InvalidOperationException("Invalid platform. Can not find proper function");
+            }
+        }
+        [DllImport("libwebp_x86.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "WebPMalloc")]
+        private static extern IntPtr WebPMalloc_x86(int size);
+        [DllImport("libwebp_x64.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "WebPMalloc")]
+        private static extern IntPtr WebPMalloc_x64(int size);
+    }
+    #endregion
+
+    #region | Import libwebpdemux functions |
+    [SuppressUnmanagedCodeSecurityAttribute]
+    internal sealed partial class UnsafeNativeMethods
+    {
+        [MethodImpl(256)]  //MethodImplOptions.AggressiveInlining
+        private static void ValidatePlatform()
+        {
+            if (IntPtr.Size != 4 && IntPtr.Size != 8)
+                throw new InvalidOperationException("Invalid platform. Can not find proper function");
+        }
+
+        /*
+        * from WebPAnimDecoder API
+        */
+
+        private static readonly int WEBP_DEMUX_ABI_VERSION = 0x0107;
+
+        /// <summary>Should always be called, to initialize a fresh WebPAnimDecoderOptions
+        /// structure before modification. Returns false in case of version mismatch.
+        /// WebPAnimDecoderOptionsInit() must have succeeded before using the
+        /// 'dec_options' object.</summary>
+        /// <param name="dec_options">(in/out) options used for decoding animation</param>
+        /// <returns>true/false - success/error</returns>
+        internal static bool WebPAnimDecoderOptionsInit(ref WebPAnimDecoderOptions dec_options)
+        {
+            ValidatePlatform();
+
+            return WebPAnimDecoderOptionsInitInternal(ref dec_options, WEBP_DEMUX_ABI_VERSION) == 1;
+
+            ////switch (IntPtr.Size)
+            ////{
+            ////    case 4:
+            ////        return WebPAnimDecoderOptionsInitInternal_x86(ref dec_options, WEBP_DEMUX_ABI_VERSION) == 1;
+            ////    case 8:
+            ////        return WebPAnimDecoderOptionsInitInternal_x64(ref dec_options, WEBP_DEMUX_ABI_VERSION) == 1;
+            ////    default:
+            ////        throw new InvalidOperationException("Invalid platform. Can not find proper function");
+            ////}
+        }
+        //[DllImport("libwebpdemux.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "WebPAnimDecoderOptionsInitInternal")]
+        //private static extern int WebPAnimDecoderOptionsInitInternal_x86(ref WebPAnimDecoderOptions dec_options, int WEBP_DEMUX_ABI_VERSION);
+        [DllImport("libwebpdemux.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "WebPAnimDecoderOptionsInitInternal")]
+        private static extern int WebPAnimDecoderOptionsInitInternal(ref WebPAnimDecoderOptions dec_options, int WEBP_DEMUX_ABI_VERSION);
+        ////[DllImport("libwebpdemux.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "WebPAnimDecoderOptionsInitInternal")]
+        ////private static extern int WebPAnimDecoderOptionsInitInternal_x64(ref WebPAnimDecoderOptions dec_options, int WEBP_DEMUX_ABI_VERSION);
+
+        /// <summary>
+        /// Creates and initializes a WebPAnimDecoder object.
+        /// </summary>
+        /// <param name="webp_data">(in) WebP bitstream. This should remain unchanged during the 
+        ///     lifetime of the output WebPAnimDecoder object.</param>
+        /// <param name="dec_options">(in) decoding options. Can be passed NULL to choose 
+        ///     reasonable defaults (in particular, color mode MODE_RGBA 
+        ///     will be picked).</param>
+        /// <returns>A pointer to the newly created WebPAnimDecoder object, or NULL in case of
+        ///     parsing error, invalid option or memory error.</returns>
+        internal static WebPAnimDecoder WebPAnimDecoderNew(ref WebPData webp_data, ref WebPAnimDecoderOptions dec_options)
+        {
+            ////ValidatePlatform();
+
+            IntPtr ptr = WebPAnimDecoderNewInternal(ref webp_data, ref dec_options, WEBP_DEMUX_ABI_VERSION);
+            WebPAnimDecoder decoder = new WebPAnimDecoder() { decoder = ptr };
+            return decoder;
+
+            ////switch (IntPtr.Size)
+            ////{
+            ////    case 4:
+            ////        return WebPAnimDecoderNewInternal_x86(ref webp_data, ref dec_options, WEBP_DEMUX_ABI_VERSION);
+            ////    case 8:
+            ////        return WebPAnimDecoderNewInternal_x64(ref webp_data, ref dec_options, WEBP_DEMUX_ABI_VERSION);
+            ////    default:
+            ////        throw new InvalidOperationException("Invalid platform. Can not find proper function");
+            ////}
+        }
+        [DllImport("libwebpdemux.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "WebPAnimDecoderNewInternal")]
+        private static extern IntPtr WebPAnimDecoderNewInternal(ref WebPData webp_data, ref WebPAnimDecoderOptions dec_options, int WEBP_DEMUX_ABI_VERSION);
+        ////[DllImport("libwebpdemux.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "WebPAnimDecoderNewInternal")]
+        ////private static extern IntPtr WebPAnimDecoderNewInternal_x64(ref WebPData webp_data, ref WebPAnimDecoderOptions dec_options, int WEBP_DEMUX_ABI_VERSION);
+
+        /// <summary>Get global information about the animation.</summary>
+        /// <param name="dec">(in) decoder instance to get information from.</param>
+        /// <param name="info">(out) global information fetched from the animation.</param>
+        /// <returns>True on success.</returns>
+        internal static bool WebPAnimDecoderGetInfo(IntPtr dec, out WebPAnimInfo info)
+        {
+            ////ValidatePlatform();
+
+            return WebPAnimDecoderGetInfoInternal(dec, out info) == 1;
+
+            ////switch (IntPtr.Size)
+            ////{
+            ////    case 4:
+            ////        return WebPAnimDecoderGetInfo_x86(dec, out info) == 1;
+            ////    case 8:
+            ////        return WebPAnimDecoderGetInfo_x64(dec, out info) == 1;
+            ////    default:
+            ////        throw new InvalidOperationException("Invalid platform. Can not find proper function");
+            ////}
+        }
+        [DllImport("libwebpdemux.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "WebPAnimDecoderGetInfo")]
+        private static extern int WebPAnimDecoderGetInfoInternal(IntPtr dec, out WebPAnimInfo info);
+        ////[DllImport("libwebpdemux.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "WebPAnimDecoderGetInfo")]
+        ////private static extern int WebPAnimDecoderGetInfo_x64(IntPtr dec, out WebPAnimInfo info);
+
+        /// <summary>Check if there are more frames left to decode.</summary>
+        /// <param name="dec">(in) decoder instance to be checked.</param>
+        /// <returns>
+        /// True if 'dec' is not NULL and some frames are yet to be decoded.
+        /// Otherwise, returns false.
+        /// </returns>
+        internal static bool WebPAnimDecoderHasMoreFrames(IntPtr dec)
+        {
+            ////ValidatePlatform();
+
+            return WebPAnimDecoderHasMoreFramesInternal(dec) == 1;
+
+            ////switch (IntPtr.Size)
+            ////{
+            ////    case 4:
+            ////        return WebPAnimDecoderHasMoreFrames_x86(dec) == 1;
+            ////    case 8:
+            ////        return WebPAnimDecoderHasMoreFrames_x64(dec) == 1;
+            ////    default:
+            ////        throw new InvalidOperationException("Invalid platform. Can not find proper function");
+            ////}
+        }
+        [DllImport("libwebpdemux.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "WebPAnimDecoderHasMoreFrames")]
+        private static extern int WebPAnimDecoderHasMoreFramesInternal(IntPtr dec);
+        ////[DllImport("libwebpdemux.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "WebPAnimDecoderHasMoreFrames")]
+        ////private static extern int WebPAnimDecoderHasMoreFrames_x64(IntPtr dec);
+
+        /// <summary>
+        /// Fetch the next frame from 'dec' based on options supplied to
+        /// WebPAnimDecoderNew(). This will be a fully reconstructed canvas of size
+        /// 'canvas_width * 4 * canvas_height', and not just the frame sub-rectangle. The
+        /// returned buffer 'buf' is valid only until the next call to
+        /// WebPAnimDecoderGetNext(), WebPAnimDecoderReset() or WebPAnimDecoderDelete().
+        /// </summary>
+        /// <param name="dec">(in/out) decoder instance from which the next frame is to be fetched.</param>
+        /// <param name="buf">(out) decoded frame.</param>
+        /// <param name="timestamp">(out) timestamp of the frame in milliseconds.</param>
+        /// <returns>
+        /// False if any of the arguments are NULL, or if there is a parsing or
+        /// decoding error, or if there are no more frames. Otherwise, returns true.
+        /// </returns>
+        internal static bool WebPAnimDecoderGetNext(IntPtr dec, ref IntPtr buf, ref int timestamp)
+        {
+            ////ValidatePlatform();
+
+            return WebPAnimDecoderGetNextInternal(dec, ref buf, ref timestamp) == 1;
+
+            ////switch (IntPtr.Size)
+            ////{
+            ////    case 4:
+            ////        return WebPAnimDecoderGetNext_x86(dec, ref buf, ref timestamp) == 1;
+            ////    case 8:
+            ////        return WebPAnimDecoderGetNext_x64(dec, ref buf, ref timestamp) == 1;
+            ////    default:
+            ////        throw new InvalidOperationException("Invalid platform. Can not find proper function");
+            ////}
+        }
+        [DllImport("libwebpdemux.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "WebPAnimDecoderGetNext")]
+        private static extern int WebPAnimDecoderGetNextInternal(IntPtr dec, ref IntPtr buf, ref int timestamp);
+        ////[DllImport("libwebpdemux.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "WebPAnimDecoderGetNext")]
+        ////private static extern int WebPAnimDecoderGetNext_x64(IntPtr dec, ref IntPtr buf, ref int timestamp);
+
+        /// <summary>
+        /// Resets the WebPAnimDecoder object, so that next call to
+        /// WebPAnimDecoderGetNext() will restart decoding from 1st frame. This would be
+        /// helpful when all frames need to be decoded multiple times (e.g.
+        /// info.loop_count times) without destroying and recreating the 'dec' object.
+        /// </summary>
+        /// <param name="dec">(in/out) decoder instance to be reset</param>
+        internal static void WebPAnimDecoderReset(IntPtr dec)
+        {
+            ////ValidatePlatform();
+
+            WebPAnimDecoderResetInternal(dec);
+
+            ////switch (IntPtr.Size)
+            ////{
+            ////    case 4:
+            ////        WebPAnimDecoderReset_x86(dec);
+            ////        break;
+            ////    case 8:
+            ////        WebPAnimDecoderReset_x64(dec);
+            ////        break;
+            ////    default:
+            ////        throw new InvalidOperationException("Invalid platform. Can not find proper function");
+            ////}
+        }
+        [DllImport("libwebpdemux.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "WebPAnimDecoderReset")]
+        private static extern void WebPAnimDecoderResetInternal(IntPtr dec);
+        ////[DllImport("libwebpdemux.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "WebPAnimDecoderReset")]
+        ////private static extern void WebPAnimDecoderReset_x64(IntPtr dec);
+
+        /// <summary>Deletes the WebPAnimDecoder object.</summary>
+        /// <param name="decoder">(in/out) decoder instance to be deleted</param>
+        internal static void WebPAnimDecoderDelete(IntPtr decoder)
+        {
+            ////ValidatePlatform();
+
+            WebPAnimDecoderDeleteInternal(decoder);
+
+            ////switch (IntPtr.Size)
+            ////{
+            ////    case 4:
+            ////        WebPAnimDecoderDelete_x86(decoder);
+            ////        break;
+            ////    case 8:
+            ////        WebPAnimDecoderDelete_x64(decoder);
+            ////        break;
+            ////    default:
+            ////        throw new InvalidOperationException("Invalid platform. Can not find proper function");
+            ////}
+        }
+        [DllImport("libwebpdemux.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "WebPAnimDecoderDelete")]
+        private static extern void WebPAnimDecoderDeleteInternal(IntPtr dec);
+        ////[DllImport("libwebpdemux.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "WebPAnimDecoderDelete")]
+        ////private static extern void WebPAnimDecoderDelete_x64(IntPtr dec);
     }
     #endregion
 
@@ -1536,7 +1888,7 @@ namespace WebPWrapper
     };
 
     /// <summary>Describes the byte-ordering of packed samples in memory</summary>
-    internal enum WEBP_CSP_MODE
+    public enum WEBP_CSP_MODE
     {
         /// <summary>Byte-order: R,G,B,R,G,B,..</summary>
         MODE_RGB = 0,
@@ -1972,5 +2324,74 @@ namespace WebPWrapper
         /// <summary>Padding for later use</summary>
         private readonly UInt32 pad5;
     };
+
+    /*
+     * from WebPAnimDecoder API
+     */
+
+    /// <summary>Anim decoder options</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct WebPAnimDecoderOptions
+    {
+        /// <summary>Output colorspace. Only the following modes are supported:
+        /// MODE_RGBA, MODE_BGRA, MODE_rgbA and MODE_bgrA.</summary>
+        public WEBP_CSP_MODE color_mode;
+        /// <summary>If true, use multi-threaded decoding</summary>
+        public int use_threads;
+        /// <summary>Padding for later use</summary>
+        private readonly UInt32 pad1;
+        /// <summary>Padding for later use</summary>
+        private readonly UInt32 pad2;
+        /// <summary>Padding for later use</summary>
+        private readonly UInt32 pad3;
+        /// <summary>Padding for later use</summary>
+        private readonly UInt32 pad4;
+        /// <summary>Padding for later use</summary>
+        private readonly UInt32 pad5;
+        /// <summary>Padding for later use</summary>
+        private readonly UInt32 pad6;
+        /// <summary>Padding for later use</summary>
+        private readonly UInt32 pad7;
+    };
+
+    /// <summary>
+    /// Data type used to describe 'raw' data, e.g., chunk data
+    /// (ICC profile, metadata) and WebP compressed image data.
+    /// 'bytes' memory must be allocated using WebPMalloc() and such.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct WebPData
+    {
+        public IntPtr data;
+        public UIntPtr size;
+    }
+
+    /// <summary>Main opaque object.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct WebPAnimDecoder
+    {
+        public IntPtr decoder;
+    }
+
+    /// <summary>Global information about the animation</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct WebPAnimInfo
+    {
+        public UInt32 canvas_width;
+        public UInt32 canvas_height;
+        public UInt32 loop_count;
+        public UInt32 bgcolor;
+        public UInt32 frame_count;
+        /// <summary>Padding for later use</summary>
+        private readonly UInt32 pad1;
+        /// <summary>Padding for later use</summary>
+        private readonly UInt32 pad2;
+        /// <summary>Padding for later use</summary>
+        private readonly UInt32 pad3;
+        /// <summary>Padding for later use</summary>
+        private readonly UInt32 pad4;
+    }
+
     #endregion
+
 }
