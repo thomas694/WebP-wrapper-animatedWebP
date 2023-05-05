@@ -599,8 +599,10 @@ namespace WebPWrapper
 
         /// <summary>Decode an Animated WebP image</summary>
         /// <param name="rawWebP">The data to uncompress</param>
+        /// <param name="startFrameIdx">OPTIONAL start index (including) for first frame that should be returned</param>
+        /// <param name="endFrameIdx">OPTIONAL end index (excluding) for last frame up until that, frames should be returned</param>
         /// <returns>List of FrameData - each containing frame bitmap and duration</returns>
-        public IEnumerable<FrameData> AnimDecode(byte[] rawWebP)
+        public IEnumerable<FrameData> AnimDecode(byte[] rawWebP, int startFrameIdx = -1, int endFrameIdx = -1)
         {
             GCHandle pinnedWebP = GCHandle.Alloc(rawWebP, GCHandleType.Pinned);
 
@@ -624,22 +626,34 @@ namespace WebPWrapper
 
                 List<FrameData> frames = new List<FrameData>();
                 int oldTimestamp = 0;
+                int idx = 0;
                 while (UnsafeNativeMethods.WebPAnimDecoderHasMoreFrames(dec.decoder))
                 {
                     IntPtr buf = IntPtr.Zero;
                     int timestamp = 0;
                     var result2 = UnsafeNativeMethods.WebPAnimDecoderGetNext(dec.decoder, ref buf, ref timestamp);
 
-                    bitmap = new Bitmap((int)anim_info.canvas_width, (int)anim_info.canvas_height, PixelFormat.Format32bppArgb);
-                    bmpData = bitmap.LockBits(rect, ImageLockMode.ReadWrite, bitmap.PixelFormat);
-                    IntPtr startAddress = bmpData.Scan0;
-                    int pixels = Math.Abs(bmpData.Stride) * bitmap.Height;
-                    UnsafeNativeMethods.CopyMemory(startAddress, buf, (uint)pixels);
-                    bitmap.UnlockBits(bmpData);
-                    bmpData = null;
+                    if (startFrameIdx == -1 || startFrameIdx <= idx)
+                    {
 
-                    frames.Add(new FrameData() { Bitmap = bitmap, Duration = timestamp - oldTimestamp });
+                        bitmap = new Bitmap((int)anim_info.canvas_width, (int)anim_info.canvas_height, PixelFormat.Format32bppArgb);
+                        bmpData = bitmap.LockBits(rect, ImageLockMode.ReadWrite, bitmap.PixelFormat);
+                        IntPtr startAddress = bmpData.Scan0;
+                        int pixels = Math.Abs(bmpData.Stride) * bitmap.Height;
+                        UnsafeNativeMethods.CopyMemory(startAddress, buf, (uint)pixels);
+                        bitmap.UnlockBits(bmpData);
+                        bmpData = null;
+
+                        frames.Add(new FrameData() { Bitmap = bitmap, Duration = timestamp - oldTimestamp });
+                    }
+
                     oldTimestamp = timestamp;
+                    ++idx;
+
+                    if (endFrameIdx != -1 && idx >= endFrameIdx)
+                    {
+                        break;
+                    }
                 }
 
                 UnsafeNativeMethods.WebPAnimDecoderDelete(dec.decoder);
