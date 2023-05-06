@@ -1026,6 +1026,7 @@ namespace WebPWrapper
         static UnsafeNativeMethods()
         {
             string path = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), IntPtr.Size == 4 ? "x86" : "x64");
+            LoadLibrary(Path.Combine(path, "libsharpyuv.dll"));
             LoadLibrary(Path.Combine(path, "libwebp.dll"));
             LoadLibrary(Path.Combine(path, "libwebpdecoder.dll"));
             LoadLibrary(Path.Combine(path, "libwebpdemux.dll"));
@@ -1038,7 +1039,7 @@ namespace WebPWrapper
     internal sealed partial class UnsafeNativeMethods
     {
 
-        private static readonly int WEBP_DECODER_ABI_VERSION = 0x0208;
+        private static readonly int WEBP_DECODER_ABI_VERSION = 0x0209;
 
         /// <summary>This function will initialize the configuration according to a predefined set of parameters (referred to by 'preset') and a given quality factor</summary>
         /// <param name="config">The WebPConfig structure</param>
