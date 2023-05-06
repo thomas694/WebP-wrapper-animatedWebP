@@ -1,3 +1,24 @@
+## Note 2
+
+Modified version of [WebP-wrapper-animatedWebP][1]:
+ * REFACTOR: avoid duplicate library files
+ * support optional frame ranges (by indices) when decoding animated webp files (see `WebP.AnimDecode(..)`),
+   e.g.
+   ```c#
+   var frames = webp.AnimDecode(byteArray, 0, 1);
+   ```
+   would only decode the 1st frame
+ * use `libwebp` version 1.3.0
+
+
+SOURCE REPOSITORY:
+
+[https://github.com/thomas694/WebP-wrapper-animatedWebP](https://github.com/thomas694/WebP-wrapper-animatedWebP/tree/a7d85d42999d7fab45bd61d0d1bdeb7131c7dbb9)
+
+at commit: a7d85d42999d7fab45bd61d0d1bdeb7131c7dbb9
+
+---
+
 ## Note
 
 This repository contains the original code from the source repo plus wrapper code to handle animated WebP files.<br>
@@ -151,3 +172,6 @@ MessageBox.Show("Red: " + result[0] + dB\n" +
 
 ## Thanks to jzern@google.com
 Without their help this wapper would not have been possible.
+
+
+[1]: https://github.com/thomas694/WebP-wrapper-animatedWebP
