@@ -33,8 +33,8 @@ Downloaded version 1.3.0 from
  
 then copy & rename:
 ```
-<libwebp-dir>\output\release-dynamic\x64\bin\*.dll	->	<here>\x64\*.dll
-<libwebp-dir>\output\release-dynamic\x86\bin\*.dll	->	<here>\x86\*.dll
+<libwebp-dir>\output\release-dynamic\x64\bin\*.dll	->	<here>\WebPWrapperLib\x64\*.dll
+<libwebp-dir>\output\release-dynamic\x86\bin\*.dll	->	<here>\WebPWrapperLib\x86\*.dll
 ```
 
 For more details and instructions for compiling the library see page 
