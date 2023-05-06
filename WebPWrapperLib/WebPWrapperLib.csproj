@@ -7,8 +7,8 @@
     <ProjectGuid>{935F7370-4266-43D1-B907-1322BDBCD6ED}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>WebP_wrapper</RootNamespace>
-    <AssemblyName>WebP-wrapper</AssemblyName>
+    <RootNamespace>WebPWrapperLib</RootNamespace>
+    <AssemblyName>WebPWrapperLib</AssemblyName>
     <TargetFrameworkVersion>v2.0</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <Deterministic>true</Deterministic>
