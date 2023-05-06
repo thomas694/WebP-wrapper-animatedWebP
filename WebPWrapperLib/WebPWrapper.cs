@@ -1026,10 +1026,18 @@ namespace WebPWrapper
         static UnsafeNativeMethods()
         {
             string path = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), IntPtr.Size == 4 ? "x86" : "x64");
-            LoadLibrary(Path.Combine(path, "libsharpyuv.dll"));
-            LoadLibrary(Path.Combine(path, "libwebp.dll"));
-            LoadLibrary(Path.Combine(path, "libwebpdecoder.dll"));
-            LoadLibrary(Path.Combine(path, "libwebpdemux.dll"));
+            string[] files = new string[]
+            {
+                Path.Combine(path, "libsharpyuv.dll"),
+                Path.Combine(path, "libwebp.dll"),
+                Path.Combine(path, "libwebpdecoder.dll"),
+                Path.Combine(path, "libwebpdemux.dll"),
+            };
+            foreach(string f in files)
+            {
+                if(File.Exists(f))
+                    LoadLibrary(f);
+            }
         }
     }
     #endregion
