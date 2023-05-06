@@ -5,7 +5,7 @@ VisualStudioVersion = 16.0.31515.178
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WebPTest", "WebPTest\WebPTest.csproj", "{38700B2B-939E-439F-A975-E6FA91703BDB}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WebP-wrapper", "WebP-wrapper\WebP-wrapper.csproj", "{935F7370-4266-43D1-B907-1322BDBCD6ED}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WebPWrapperLib", "WebPWrapperLib\WebPWrapperLib.csproj", "{935F7370-4266-43D1-B907-1322BDBCD6ED}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

@@ -184,9 +184,9 @@
     </BootstrapperPackage>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\WebP-wrapper\WebP-wrapper.csproj">
+    <ProjectReference Include="..\WebPWrapperLib\WebPWrapperLib.csproj">
       <Project>{935f7370-4266-43d1-b907-1322bdbcd6ed}</Project>
-      <Name>WebP-wrapper</Name>
+      <Name>WebPWrapperLib</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
