@@ -28,6 +28,7 @@ jobs:
     env:
       SolutionPath: WebPTest.sln
       ProjectPath: WebPTest
+      LibraryProjectPath: WebPWrapperLib
       OutputPath: WebPTest/bin/Release
       VersionNumber: ${{ github.event.inputs.version }}
 
@@ -68,10 +69,8 @@ jobs:
     - name: Copy Dlls
       if: github.event.inputs.create-binaries == 'true'
       run: |
-         Copy-Item "libwebp\output\release-dynamic\x86\bin\*.dll" "${{ env.ProjectPath }}\x86"
-         Copy-Item "libwebp\output\release-dynamic\x86\bin\libwebp.dll" "${{ env.ProjectPath }}\libwebp_x86.dll"
-         Copy-Item "libwebp\output\release-dynamic\x64\bin\*.dll" "${{ env.ProjectPath }}\x64"
-         Copy-Item "libwebp\output\release-dynamic\x64\bin\libwebp.dll" "${{ env.ProjectPath }}\libwebp_x64.dll"
+         Copy-Item "libwebp\output\release-dynamic\x86\bin\*.dll" "${{ env.LibraryProjectPath }}\x86"
+         Copy-Item "libwebp\output\release-dynamic\x64\bin\*.dll" "${{ env.LibraryProjectPath }}\x64"
 
     - name: Build
       run: msbuild ${{ env.SolutionPath }} /p:Configuration=Release /p:Platform="Any CPU"
@@ -87,9 +86,9 @@ jobs:
     - name: Add files
       if: github.event.inputs.create-release == 'true'
       run: |
-         Copy-Item "Compile dll.txt" "${{ env.OutputPath }}"
+         Copy-Item "build_libwebp_dll.md" "${{ env.OutputPath }}"
          Copy-Item "LICENSE" "${{ env.OutputPath }}"
-         Copy-Item "${{ env.ProjectPath }}\WebPWrapper.cs" "${{ env.OutputPath }}"
+         Copy-Item "${{ env.LibraryProjectPath }}\WebPWrapper.cs" "${{ env.OutputPath }}"
 
     - name: Create Draft Release
       id: create_release
