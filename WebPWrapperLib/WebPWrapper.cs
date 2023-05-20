@@ -1017,8 +1017,20 @@ namespace WebPWrapper
     [SuppressUnmanagedCodeSecurityAttribute]
     internal sealed partial class UnsafeNativeMethods
     {
+
+        private static readonly bool IsNetCore3CompatRuntime;
+        internal static void CopyMemory(IntPtr dest, IntPtr src, uint count)
+        {
+            if (IsNetCore3CompatRuntime) CopyMemory_Core(dest, src, count);
+            else CopyMemory_Framework(dest, src, count);
+        }
+
         [DllImport("kernel32.dll", EntryPoint = "CopyMemory", SetLastError = false)]
-        internal static extern void CopyMemory(IntPtr dest, IntPtr src, uint count);
+        internal static extern void CopyMemory_Framework(IntPtr dest, IntPtr src, uint count);
+
+        [DllImport("kernel32.dll", EntryPoint = "RtlMoveMemory", SetLastError = false)]
+        internal static extern void CopyMemory_Core(IntPtr dest, IntPtr src, uint count);
+
 
         [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = false)]
         private static extern IntPtr LoadLibrary(string lpFileName);
@@ -1037,6 +1049,28 @@ namespace WebPWrapper
             {
                 if(File.Exists(f))
                     LoadLibrary(f);
+            }
+
+            var coreDesc = System.Environment.Version;
+            //string netDesc = System.Runtime.InteropServices.RuntimeEnvironment;//.RuntimeInformation;//.FrameworkDescription;
+
+            // FIX incompatible entry-points for NET Framework/core <= 2 and later NET(core) versions:
+            //     CopyMemory vs 
+            // -> WORKAROUND: detect, if entrypoint is or
+            // see https://github.com/dotnet/runtime/issues/12496
+            try
+            {
+                const int size = 200;
+                IntPtr memorySource = Marshal.AllocHGlobal(size);
+                Marshal.WriteInt32(memorySource, 35);
+                IntPtr memoryTarget = Marshal.AllocHGlobal(size);
+                CopyMemory_Framework(memoryTarget, memorySource, size);
+                if (Marshal.ReadInt32(memoryTarget) == 35) IsNetCore3CompatRuntime = false;
+                else IsNetCore3CompatRuntime = true;
+            }
+            catch (EntryPointNotFoundException)
+            {
+                IsNetCore3CompatRuntime = true;
             }
         }
     }
