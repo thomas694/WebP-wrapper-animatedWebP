@@ -1055,19 +1055,27 @@ namespace WebPWrapper
             //     CopyMemory vs. RtlMoveMemory
             // -> WORKAROUND: detect, if entrypoint is CopyMemory or RtlMoveMemory
             // see https://github.com/dotnet/runtime/issues/12496
+            Nullable<IntPtr> memorySource = null;
             try
             {
                 const int size = 200;
-                IntPtr memorySource = Marshal.AllocHGlobal(size);
-                Marshal.WriteInt32(memorySource, 35);
+                memorySource = Marshal.AllocHGlobal(size);
+                Marshal.WriteInt32(memorySource.Value, 42);
                 IntPtr memoryTarget = Marshal.AllocHGlobal(size);
-                CopyMemory_Framework(memoryTarget, memorySource, size);
-                if (Marshal.ReadInt32(memoryTarget) == 35) IsNetCore3CompatRuntime = false;
+                CopyMemory_Framework(memoryTarget, memorySource.Value, size);
+                if (Marshal.ReadInt32(memoryTarget) == 42) IsNetCore3CompatRuntime = false;
                 else IsNetCore3CompatRuntime = true;
             }
             catch (EntryPointNotFoundException)
             {
                 IsNetCore3CompatRuntime = true;
+            }
+            finally
+            {
+                if (memorySource.HasValue)
+                {
+                    Marshal.FreeHGlobal(memorySource.Value);
+                }
             }
         }
     }
