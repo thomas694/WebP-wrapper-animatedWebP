@@ -1051,12 +1051,9 @@ namespace WebPWrapper
                     LoadLibrary(f);
             }
 
-            var coreDesc = System.Environment.Version;
-            //string netDesc = System.Runtime.InteropServices.RuntimeEnvironment;//.RuntimeInformation;//.FrameworkDescription;
-
             // FIX incompatible entry-points for NET Framework/core <= 2 and later NET(core) versions:
-            //     CopyMemory vs 
-            // -> WORKAROUND: detect, if entrypoint is or
+            //     CopyMemory vs. RtlMoveMemory
+            // -> WORKAROUND: detect, if entrypoint is CopyMemory or RtlMoveMemory
             // see https://github.com/dotnet/runtime/issues/12496
             try
             {
