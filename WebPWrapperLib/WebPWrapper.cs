@@ -670,6 +670,89 @@ namespace WebPWrapper
             }
         }
 
+        /// <summary>
+        /// Holds information about one frame in compressed form.
+        /// </summary>
+        /// <remarks>
+        /// AnimGetFrame() returns a FrameDataRaw object.
+        /// </remarks>
+        public class FrameDataRaw
+        {
+            public byte[] Data { get; set; }
+            public int Size { get; set; }
+            public int Duration { get; set; }
+        }
+
+        /// <summary>Initialize the library for handling the given WebP file.</summary>
+        /// <param name="pathFileName">Animated WebP file to load</param>
+        /// <param name="frameCount">Number of frames in the animated WebP</param>
+        /// <returns>true on success</returns>
+        public bool AnimInit(string pathFileName, out uint frameCount)
+        {
+            try { 
+                byte[] rawWebP = File.ReadAllBytes(pathFileName);
+
+                return AnimInit(rawWebP, out frameCount);
+            }
+            catch (Exception) { throw; }
+        }
+
+        /// <summary>Initialize the library for handling the given WebP file.</summary>
+        /// <param name="rawWebP">Byte array of an animated WebP</param>
+        /// <param name="frameCount">Number of frames in the animated WebP</param>
+        /// <returns>true on success</returns>
+        public bool AnimInit(byte[] rawWebP, out uint frameCount)
+        {
+            DisposeOldDecoder();
+
+            _pinnedWebP = GCHandle.Alloc(rawWebP, GCHandleType.Pinned);
+
+            try
+            {
+                WebPAnimDecoderOptions dec_options = new WebPAnimDecoderOptions();
+                var result = UnsafeNativeMethods.WebPAnimDecoderOptionsInit(ref dec_options);
+                dec_options.color_mode = WEBP_CSP_MODE.MODE_BGRA;
+                WebPData webp_data = new WebPData
+                {
+                    data = _pinnedWebP.AddrOfPinnedObject(),
+                    size = new UIntPtr((uint)rawWebP.Length)
+                };
+                _webPAnimDecoder = UnsafeNativeMethods.WebPAnimDecoderNew(ref webp_data, ref dec_options);
+
+                WebPAnimInfo anim_info;
+                UnsafeNativeMethods.WebPAnimDecoderGetInfo(_webPAnimDecoder.decoder, out anim_info);
+                _frameCount = frameCount = anim_info.frame_count;
+
+                return true;
+            }
+            catch (Exception) { throw; }
+        }
+
+        /// <summary>Gets the raw frame data.</summary>
+        /// <param name="frameNumber"></param>
+        /// <returns>object with the frame's raw data</returns>
+        public FrameDataRaw AnimGetFrame(int frameNumber)
+        {
+            if (_webPAnimDecoder.decoder == IntPtr.Zero)
+                throw new ApplicationException("Decoder has not been initialized.");
+
+            if (frameNumber < 1 || frameNumber > _frameCount)
+                throw new ArgumentOutOfRangeException();
+
+            WebPDemuxer webPDemuxer = UnsafeNativeMethods.WebPAnimDecoderGetDemuxer(_webPAnimDecoder);
+            bool res = UnsafeNativeMethods.WebPDemuxGetFrame(webPDemuxer, frameNumber, out WebPIterator iter);
+
+            int size = (int)iter.fragment.size;
+            byte[] bytes = new byte[size];
+            Marshal.Copy(iter.fragment.data, bytes, 0, size);
+
+            FrameDataRaw fd = new FrameDataRaw() { Data = bytes, Duration = iter.duration };
+            
+            UnsafeNativeMethods.WebPDemuxReleaseIterator(iter);
+
+            return fd;
+        }
+
         #endregion
 
         #region | Another Public Functions |
@@ -1002,13 +1085,50 @@ namespace WebPWrapper
         }
 
         private delegate int MyWriterDelegate([InAttribute()] IntPtr data, UIntPtr data_size, ref WebPPicture picture);
+
+        private bool _disposed;
+        private GCHandle _pinnedWebP;
+        private WebPAnimDecoder _webPAnimDecoder;
+        private uint _frameCount;
+
+        private void DisposeOldDecoder()
+        {
+            if (_webPAnimDecoder.decoder != IntPtr.Zero)
+            {
+                UnsafeNativeMethods.WebPAnimDecoderDelete(_webPAnimDecoder.decoder);
+                _webPAnimDecoder.decoder = IntPtr.Zero;
+                if (_pinnedWebP.IsAllocated)
+                    _pinnedWebP.Free();
+            }
+        }
+
+        private void Dispose(bool disposing)
+        {
+            if (_disposed)
+                return;
+
+            if (disposing)
+            {
+                // TODO: dispose managed state (managed objects).
+            }
+
+            DisposeOldDecoder();
+
+            _disposed = true;
+        }
         #endregion
 
         #region | Destruction |
         /// <summary>Free memory</summary>
         public void Dispose()
         {
+            Dispose(true);
             GC.SuppressFinalize(this);
+        }
+
+        ~WebP()
+        {
+            Dispose(false);
         }
         #endregion
     }
@@ -1488,6 +1608,59 @@ namespace WebPWrapper
         }
         [DllImport("libwebpdemux.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "WebPAnimDecoderDelete")]
         private static extern void WebPAnimDecoderDeleteInternal(IntPtr dec);
+
+        /// <summary>
+        /// Grab the internal demuxer object.
+        /// Getting the demuxer object can be useful if one wants to use operations only
+        /// available through demuxer; e.g. to get XMP/EXIF/ICC metadata. The returned
+        /// demuxer object is owned by 'dec' and is valid only until the next call to
+        /// WebPAnimDecoderDelete().
+        /// </summary>
+        /// <param name="dec">(in) decoder instance from which the demuxer object is to be fetched</param>
+        /// <returns></returns>
+        internal static WebPDemuxer WebPAnimDecoderGetDemuxer(WebPAnimDecoder dec)
+        {
+            //ValidatePlatform();
+
+            IntPtr ptr = WebPAnimDecoderGetDemuxerInternal(dec.decoder);
+            WebPDemuxer demuxer = new WebPDemuxer() { demuxer = ptr };
+            return demuxer;
+        }
+        [DllImport("libwebpdemux.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "WebPAnimDecoderGetDemuxer")]
+        private static extern IntPtr WebPAnimDecoderGetDemuxerInternal(IntPtr dec);
+
+        /// <summary>
+        /// Retrieves frame 'frame_number' from 'dmux'.
+        /// 'iter->fragment' points to the frame on return from this function.
+        /// Setting 'frame_number' equal to 0 will return the last frame of the image.
+        /// Returns false if 'dmux' is NULL or frame 'frame_number' is not present.
+        /// Call WebPDemuxReleaseIterator() when use of the iterator is complete.
+        /// NOTE: 'dmux' must persist for the lifetime of 'iter'.
+        /// </summary>
+        /// <param name="decoder"></param>
+        /// <param name="frame"></param>
+        /// <param name="iter"></param>
+        /// <returns>true/false - success/error</returns>
+        internal static bool WebPDemuxGetFrame(WebPDemuxer dmux, int frameNumber, out WebPIterator iter)
+        {
+            return WebPDemuxGetFrameInternal(dmux.demuxer, frameNumber, out iter) == 1;
+        }
+        [DllImport("libwebpdemux.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "WebPDemuxGetFrame")]
+        private static extern int WebPDemuxGetFrameInternal(IntPtr dmux, int frameNumber, out WebPIterator iter);
+
+        /// <summary>
+        /// Releases any memory associated with 'iter'.
+        /// Must be called before any subsequent calls to WebPDemuxGetChunk() on the same
+        /// iter. Also, must be called before destroying the associated WebPDemuxer with
+        /// WebPDemuxDelete().
+        /// </summary>
+        /// <param name="iter">iterator to release</param>
+        internal static void WebPDemuxReleaseIterator(WebPIterator iter)
+        {
+            WebPDemuxReleaseIteratorInternal(iter);
+        }
+        [DllImport("libwebpdemux.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "WebPDemuxReleaseIterator")]
+        private static extern int WebPDemuxReleaseIteratorInternal(WebPIterator iter);
     }
     #endregion
 
@@ -1624,6 +1797,38 @@ namespace WebPWrapper
         STATE_VP8L_DATA,
         STATE_DONE,
         STATE_ERROR
+    };
+
+    /// <summary>
+    /// Dispose method (animation only). Indicates how the area used by the current
+    /// frame is to be treated before rendering the next frame on the canvas.
+    /// </summary>
+    public enum WebPMuxAnimDispose
+    {
+        WEBP_MUX_DISPOSE_NONE,       // Do not dispose.
+        WEBP_MUX_DISPOSE_BACKGROUND  // Dispose to background color.
+    };
+
+    /// <summary>
+    /// Blend operation (animation only). Indicates how transparent pixels of the
+    /// current frame are blended with those of the previous canvas.
+    /// </summary>
+    public enum WebPMuxAnimBlend
+    {
+        WEBP_MUX_BLEND,              // Blend.
+        WEBP_MUX_NO_BLEND            // Do not blend.
+    };
+
+    /// <summary>
+    /// Life of a Demux object
+    /// </summary>
+    internal enum WebPDemuxState
+    {
+        WEBP_DEMUX_PARSE_ERROR = -1,    // An error occurred while parsing.
+        WEBP_DEMUX_PARSING_HEADER = 0,  // Not enough data to parse full header.
+        WEBP_DEMUX_PARSED_HEADER = 1,   // Header parsing complete,
+                                        // data may be available.
+        WEBP_DEMUX_DONE = 2             // Entire file has been parsed.
     };
     #endregion
 
@@ -2074,6 +2279,48 @@ namespace WebPWrapper
         private readonly UInt32 pad3;
         /// <summary>Padding for later use</summary>
         private readonly UInt32 pad4;
+    }
+
+    /// <summary>Frame iteration</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct WebPIterator
+    {
+        public int frame_num;
+        /// <summary>equivalent to WEBP_FF_FRAME_COUNT</summary>
+        public int num_frames;
+        /// <summary>offset relative to the canvas</summary>
+        public int x_offset, y_offset;
+        /// <summary>dimensions of this frame</summary>
+        public int width, height;
+        /// <summary>display duration in milliseconds</summary>
+        public int duration;
+        /// <summary>dispose method for the frame</summary>
+        public WebPMuxAnimDispose dispose_method;
+        /// <summary>true if 'fragment' contains a full frame. partial images
+        /// may still be decoded with the WebP incremental decoder</summary>
+        public int complete;
+        /// <summary>The frame given by 'frame_num'. Note for historical
+        /// reasons this is called a fragment</summary>
+        public WebPData fragment;
+        /// <summary>True if the frame contains transparency</summary>
+        public int has_alpha;
+        /// <summary>Blend operation for the frame</summary>
+        public WebPMuxAnimBlend blend_method;
+
+        /// <summary>Padding for later use</summary>
+        private readonly UInt32 pad1;
+        /// <summary>Padding for later use</summary>
+        private readonly UInt32 pad2;
+
+        /// <summary>for internal use only</summary>
+        private IntPtr private_;
+    };
+
+    /// <summary>WebP container demux (opaque object)</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct WebPDemuxer
+    {
+        public IntPtr demuxer;
     }
 
     #endregion
