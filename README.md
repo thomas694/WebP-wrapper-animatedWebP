@@ -1,7 +1,16 @@
-## Note 2
+## Note
 
-Modified version of [WebP-wrapper-animatedWebP][1]:
- * REFACTOR: avoid duplicate library files
+This repository contains the original code from the source repo plus...
+ * my wrapper code to handle animated WebP files,
+   e.g.
+   ```C#
+   var frames = webp.Load(strFilepath);
+   // or
+   var frames = webp.AnimDecode(byteArray);
+   ```
+
+improvements by [russaa](https://github.com/russaa) ([russaa/WebP-wrapper-animatedWebP](https://github.com/russaa/WebP-wrapper-animatedWebP/tree/dc5b979a8ba5b00be7b15b0c3055ae3c5a3cc355)):
+ * Refactor: avoid duplicate library files
  * support optional frame ranges (by indices) when decoding animated webp files (see `WebP.AnimDecode(..)`),
    e.g.
    ```c#
@@ -10,18 +19,20 @@ Modified version of [WebP-wrapper-animatedWebP][1]:
    would only decode the 1st frame
  * use `libwebp` version 1.3.0
 
+and my newest extension:
+ * functionality for getting animated WebP's (compressed) frame data,
+   e.g.
+   ```C#
+   _ = webp.AnimInit(strFilepath, out uint frameCount);
+   var frameData = webp.AnimGetFrame(intFrameNumber);
+   ```
+   for decoding at a later time,
+   e.g.
+   ```C#
+   var bmp = webp.Decode(frameData.Data);
+   ```
 
-SOURCE REPOSITORY:
-
-[https://github.com/thomas694/WebP-wrapper-animatedWebP](https://github.com/thomas694/WebP-wrapper-animatedWebP/tree/a7d85d42999d7fab45bd61d0d1bdeb7131c7dbb9)
-
-at commit: a7d85d42999d7fab45bd61d0d1bdeb7131c7dbb9
-
----
-
-## Note
-
-This repository contains the original code from the source repo plus wrapper code to handle animated WebP files.<br>
+<br>
 These changes are intended to be integrated back into the upstream repo, waiting for the decision whether and how they should be integrated.
 
 &nbsp;
