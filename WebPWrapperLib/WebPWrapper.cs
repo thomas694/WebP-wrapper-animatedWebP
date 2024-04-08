@@ -1158,7 +1158,7 @@ namespace WebPWrapper
 
         static UnsafeNativeMethods()
         {
-            string path = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), IntPtr.Size == 4 ? "x86" : "x64");
+            string path = Path.Combine(Path.GetDirectoryName(AppDomain.CurrentDomain.BaseDirectory), IntPtr.Size == 4 ? "x86" : "x64");
             string[] files = new string[]
             {
                 Path.Combine(path, "libsharpyuv.dll"),
