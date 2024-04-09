@@ -1,10 +1,10 @@
 ## Note
 
-This repository contains the original code from the source repo plus...
+This repository contains the original code from the [source repo](https://github.com/JosePineiro/WebP-wrapper) plus...
  * my wrapper code to handle animated WebP files,
    e.g.
    ```C#
-   var frames = webp.Load(strFilepath);
+   var frames = webp.AnimLoad(strFilepath);
    // or
    var frames = webp.AnimDecode(byteArray);
    ```
