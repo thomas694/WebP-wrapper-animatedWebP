@@ -61,7 +61,22 @@ namespace WebPTest
                         if (Path.GetExtension(pathFileName) == ".webp")
                         {
                             using (WebP webp = new WebP())
-                                pictureBox.Image = webp.Load(pathFileName);
+                            {
+                                byte[] bytes = File.ReadAllBytes(pathFileName);
+                                webp.GetInfo(bytes, out int width, out int height, out bool hasAlpha, out bool hasAnimation, out string format);
+                                if (!hasAnimation)
+                                {
+                                    pictureBox.Image = webp.Decode(bytes);
+                                }
+                                else
+                                {
+                                    //var list = new System.Collections.Generic.List<WebP.FrameData>(webp.AnimDecode(bytes));
+                                    System.Collections.Generic.IEnumerable<WebP.FrameData> frames = webp.AnimDecode(bytes, 0, 1);
+                                    var enumerator = frames.GetEnumerator();
+                                    enumerator.MoveNext();
+                                    pictureBox.Image = enumerator.Current.Bitmap;
+                                }
+                            }
                         }
                         else
                             pictureBox.Image = Image.FromFile(pathFileName);

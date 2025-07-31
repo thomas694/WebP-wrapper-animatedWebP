@@ -15,3 +15,4 @@ nmake /f Makefile.vc CFG=release-dynamic RTLIBCFG=dynamic OBJDIR=output
 ## Notes
 * Depend on which `Native Tools Command Prompt` (x86 or x64), the compiled binaries will match the architecture with the `Command Prompt`'s environment.
 * You **may** need to manually add some directory to `PATH` environment so that the build tool can find the external tools.
+* see [build_libwebp_dll.md](build_libwebp_dll.md) for more details on building the `libwebp` DLLs
