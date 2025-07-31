@@ -8,7 +8,7 @@ on:
         description: create libwebp and binaries?
       libwebp-version:
         description: libwebp tag to use
-        default: v1.2.4
+        default: v1.3.0
       create-release:
         type: boolean
         description: create release?

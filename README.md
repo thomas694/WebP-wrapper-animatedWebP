@@ -1,54 +1,11 @@
-## Note
-
-This repository contains the original code from the [source repo](https://github.com/JosePineiro/WebP-wrapper) plus...
- * my wrapper code to handle animated WebP files,
-   e.g.
-   ```C#
-   var frames = webp.AnimLoad(strFilepath);
-   // or
-   var frames = webp.AnimDecode(byteArray);
-   ```
-
-improvements by [russaa](https://github.com/russaa) ([russaa/WebP-wrapper-animatedWebP](https://github.com/russaa/WebP-wrapper-animatedWebP/tree/dc5b979a8ba5b00be7b15b0c3055ae3c5a3cc355)):
- * Refactor: avoid duplicate library files
- * support optional frame ranges (by indices) when decoding animated webp files (see `WebP.AnimDecode(..)`),
-   e.g.
-   ```c#
-   var frames = webp.AnimDecode(byteArray, 0, 1);
-   ```
-   would only decode the 1st frame
- * use `libwebp` version 1.3.0
-
-and my newest extension:
- * functionality for getting animated WebP's (compressed) frame data,
-   e.g.
-   ```C#
-   _ = webp.AnimInit(strFilepath, out uint frameCount);
-   var frameData = webp.AnimGetFrame(intFrameNumber);
-   ```
-   for decoding at a later time,
-   e.g.
-   ```C#
-   var bmp = webp.Decode(frameData.Data);
-   ```
-
-<br>
-These changes are intended to be integrated back into the upstream repo, waiting for the decision whether and how they should be integrated.
-
-&nbsp;
-&nbsp;
-
-[original]
-
----
-
-
 # WebP-wrapper
 Wrapper for libwebp in C#. The most complete wrapper in pure managed C#.
 
 Exposes Simple Decoding and Encoding API, Advanced Decoding and Encoding API (with statistics of compression), Get version library and WebPGetFeatures (info of any WebP file). Exposed get PSNR, SSIM or LSIM distortion metrics.
 
-The wrapper is in safe managed code in one class. No need for external dll except libwebp_x86.dll (included v0.4.4) and libwebp_x64.dll (included v1.2.1). The wrapper works in 32, 64 bit or ANY (auto swith to the appropriate library).
+It also provides methods for handling animated WebP files.
+
+The wrapper is in safe managed code in one class. No need for external dll except libwebp (included v1.3.0). The wrapper works in 32, 64 bit or ANY (auto swith to the appropriate library).
 
 The code is commented and includes simple examples for using the wrapper.
 
@@ -143,6 +100,31 @@ byte[] rawWebP = File.ReadAllBytes("test.jpg");
 using (WebP webp = new WebP())
   rawWebP = webp.EncodeNearLossless(bmp, 40, 9);
 File.WriteAllBytes("test.webp", rawWebP); 
+```
+
+## Animated WebP Functions:
+
+Load frames of an animated WebP file
+```C#
+var frames = webp.AnimLoad(strFilepath);
+// or
+var frames = webp.AnimDecode(byteArray);
+```
+
+Support for optional frame ranges (by indices) when decoding animated WebP files (see `webp.AnimDecode(..)`)
+```C#
+var frames = webp.AnimDecode(byteArray, 0, 1);
+```
+
+Get animated WebP's (compressed) frame data
+```C#
+_ = webp.AnimInit(strFilepath, out uint frameCount);
+var frameData = webp.AnimGetFrame(intFrameNumber);
+```
+
+and decode at a later time
+```C#
+var bmp = webp.Decode(frameData.Data);
 ```
 
 ## Another Functions:	
